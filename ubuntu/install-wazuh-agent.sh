@@ -271,11 +271,20 @@ PATCHED=false
 
 patch_xml_value() {
     local field="$1" expected="$2"
+    # Captura o valor atual, removendo espaços/quebras de linha ao redor
     local current
-    current=$(grep -oP "(?<=<${field}>)[^<]+" "$OSSEC_CONF" || true)
+    current=$(grep -oP "(?<=<${field}>)[^<]+" "$OSSEC_CONF" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+
+    if [[ -z "$current" ]]; then
+        warn "Campo <$field> não encontrado em ossec.conf — ignorando"
+        return
+    fi
+
     if [[ "$current" != "$expected" ]]; then
-        sed -i "s|<${field}>${current}</${field}>|<${field}>${expected}</${field}>|" "$OSSEC_CONF"
-        warn "Corrigido: <$field> $current → $expected"
+        # Usa [^<]* no padrão — substitui qualquer valor entre as tags sem
+        # interpolar $current no sed (evita erros com espaços, pipes ou newlines)
+        sed -i "s|<${field}>[^<]*</${field}>|<${field}>${expected}</${field}>|g" "$OSSEC_CONF"
+        warn "Corrigido: <$field> '$current' → '$expected'"
         PATCHED=true
     fi
 }
