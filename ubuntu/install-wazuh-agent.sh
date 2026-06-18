@@ -143,9 +143,11 @@ cat > "$STUNNEL_CONF" << EOF
 ;
 ; NÃO EDITAR — gerenciado pelo install-wazuh-agent.sh
 ;
-; stunnel 5.69+ exige verifyChain ou verifyPeer explicitamente (verify=0 foi removido).
-; verifyChain=yes valida a cadeia de certificados contra o bundle do sistema.
-; O servidor usa cert Let's Encrypt — Ubuntu ja confia via ca-certificates.
+; Validação do certificado do servidor:
+;   verifyChain = yes  — valida a cadeia contra o root-ca.pem do Wazuh
+;   checkHost         — garante que o CN/SAN do cert coincide com o hostname
+;                       (funciona porque o cert foi gerado com os SANs corretos
+;                        via generate-stunnel-cert.sh)
 
 client = yes
 pid    = /run/stunnel4/wazuh-agent.pid
@@ -155,15 +157,44 @@ pid    = /run/stunnel4/wazuh-agent.pid
 accept       = 127.0.0.1:$AGENT_PORT
 connect      = ${AGENTS_SNI}:${TUNNEL_PORT}
 verifyChain  = yes
-CApath       = /etc/ssl/certs
+checkHost    = $AGENTS_SNI
+CAfile       = /etc/stunnel/wazuh-ca.pem
 
 ; Registro do agente (agent-auth -> wazuh-master:$ENROLL_PORT)
 [wazuh-enrollment]
 accept       = 127.0.0.1:$ENROLL_PORT
 connect      = ${ENROLL_SNI}:${TUNNEL_PORT}
 verifyChain  = yes
-CApath       = /etc/ssl/certs
+checkHost    = $ENROLL_SNI
+CAfile       = /etc/stunnel/wazuh-ca.pem
 EOF
+
+# Gravar o CA cert do Wazuh (embutido no script)
+cat > /etc/stunnel/wazuh-ca.pem << 'WAZUH_CA'
+-----BEGIN CERTIFICATE-----
+MIIDiTCCAnGgAwIBAgIUU+ijcyMy+llh/IIXDk2zAmMTiBEwDQYJKoZIhvcNAQEL
+BQAwVDELMAkGA1UEBhMCVVMxEzARBgNVBAcMCkNhbGlmb3JuaWExDjAMBgNVBAoM
+BVdhenVoMQ4wDAYDVQQLDAVXYXp1aDEQMA4GA1UEAwwHUm9vdCBDQTAeFw0yNjA2
+MTcxOTU1MzBaFw0zNjA2MTQxOTU1MzBaMFQxCzAJBgNVBAYTAlVTMRMwEQYDVQQH
+DApDYWxpZm9ybmlhMQ4wDAYDVQQKDAVXYXp1aDEOMAwGA1UECwwFV2F6dWgxEDAO
+BgNVBAMMB1Jvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC5
+QIKsALAPWbl91azcV8v4DfHN4uyXWCKSad+ydKKnUm/tI78885px1BhKHeuqKg0s
+K/GIkwf84lgGbH5SaJgkT/LRaP35sVNAKSL4hf2Q4d5i/kt2tMmHcwPjYKQM6eKB
+AdCZLJUZRxukefjxY53i6B0WfdhtobGSjufxSTKmYZzA45K22gj2XTFwsb0fe4gg
+ItJeueCGvlUMM07YkX25N0jU2v7DMDnDFw77hXulmktl7haXklP+Uk8ylIdZlUTC
+aPqHi0ETL8irVR23cgfCH8imtYgQZwo63DOqCJBNg4fdIhaw4JzeD9yAnbU3WeKo
+wztSic1fNomTGl2BjTlpAgMBAAGjUzBRMB0GA1UdDgQWBBSiLu3D5I9dNqdu3z9u
+wBg4jGFtXjAfBgNVHSMEGDAWgBSiLu3D5I9dNqdu3z9uwBg4jGFtXjAPBgNVHRMB
+Af8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAm30tRLxFgRHyUBQawGwUBf6gx
+y19BXYM8MZLeHPDpv3p8/jaxGrqa71Gr8jRZC9tFjRWBxHZmu+6bkDTnwAumJyXF
+YW47G4xu9S1/xoiNHe9HH70UuAirDbnPpyyd2xumhvf8/IIzo14oS57eIswSfA+9
+sMH2c87qXA2vpx7oWkhMLDnTDkA8hrDqvnaKQ/m9gojnFB0l86BcI5FtbVrWpYWh
+wMNVI55Ub1c9mlqlSCINDfnPqsXL0wWBVKcWtAnCJ+0hBvChIb+NOeaPLw8G9wig
+s42W3g+5JrsPoS87PGvwrHZKeC/Ef/2GtzS9BCzvDuGKCu5gyYgqrAVqatGz
+-----END CERTIFICATE-----
+WAZUH_CA
+chmod 644 /etc/stunnel/wazuh-ca.pem
+ok "CA cert gravado em /etc/stunnel/wazuh-ca.pem"
 
 ok "Configuração gravada em $STUNNEL_CONF"
 log "stunnel.conf gravado"
