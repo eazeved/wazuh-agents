@@ -107,9 +107,9 @@ function Wait-Port {
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 Clear-Host
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║   Wazuh Agent + stunnel — Automated Windows Installer        ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
+Write-Host "   Wazuh Agent + stunnel -- Automated Windows Installer" -ForegroundColor Cyan
+Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Agent name   : $AgentName"
 Write-Host "  Wazuh version: $WazuhVersion"
@@ -385,9 +385,9 @@ if ($wazuhStatus -eq "Running") {
 # Summary
 # =============================================================================
 Write-Host ""
-Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║   Installation complete                                       ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
+Write-Host "   Installation complete" -ForegroundColor Green
+Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Agent name  : $AgentName"
 
