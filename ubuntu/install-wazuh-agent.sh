@@ -142,33 +142,27 @@ cat > "$STUNNEL_CONF" << EOF
 ; pelo external-ingress na porta $TUNNEL_PORT.
 ;
 ; NÃO EDITAR — gerenciado pelo install-wazuh-agent.sh
+;
+; stunnel 5.69+ exige verifyChain ou verifyPeer explicitamente (verify=0 foi removido).
+; verifyChain=yes valida a cadeia de certificados contra o bundle do sistema.
+; O servidor usa cert Let's Encrypt — Ubuntu ja confia via ca-certificates.
 
-client    = yes
-foreground = no
-pid       = /run/stunnel4/wazuh-agent.pid
+client = yes
+pid    = /run/stunnel4/wazuh-agent.pid
 
-; verify = 2  → valida o certificado do servidor contra o bundle de CAs do sistema
-;               (/etc/ssl/certs). O servidor apresenta um certificado Let's Encrypt,
-;               que o Ubuntu já confia por padrão via ca-certificates.
-; checkHost  → garante que o CN/SAN do certificado corresponda ao hostname conectado.
-
-; Comunicação contínua do agente (ossec-agentd → wazuh-master:$AGENT_PORT)
+; Comunicação contínua do agente (ossec-agentd -> wazuh-master:$AGENT_PORT)
 [wazuh-agents]
-accept    = 127.0.0.1:$AGENT_PORT
-connect   = ${AGENTS_SNI}:${TUNNEL_PORT}
-sni       = $AGENTS_SNI
-verify    = 2
-checkHost = $AGENTS_SNI
-CApath    = /etc/ssl/certs
+accept       = 127.0.0.1:$AGENT_PORT
+connect      = ${AGENTS_SNI}:${TUNNEL_PORT}
+verifyChain  = yes
+CApath       = /etc/ssl/certs
 
-; Registro do agente (agent-auth → wazuh-master:$ENROLL_PORT)
+; Registro do agente (agent-auth -> wazuh-master:$ENROLL_PORT)
 [wazuh-enrollment]
-accept    = 127.0.0.1:$ENROLL_PORT
-connect   = ${ENROLL_SNI}:${TUNNEL_PORT}
-sni       = $ENROLL_SNI
-verify    = 2
-checkHost = $ENROLL_SNI
-CApath    = /etc/ssl/certs
+accept       = 127.0.0.1:$ENROLL_PORT
+connect      = ${ENROLL_SNI}:${TUNNEL_PORT}
+verifyChain  = yes
+CApath       = /etc/ssl/certs
 EOF
 
 ok "Configuração gravada em $STUNNEL_CONF"
@@ -181,7 +175,12 @@ step "Passo 3/7 — Habilitando o serviço stunnel4"
 
 # O pacote stunnel4 no Debian/Ubuntu usa /etc/default/stunnel4 para habilitar o daemon
 if [[ -f "$STUNNEL_DEFAULT" ]]; then
-    sed -i 's/^ENABLED=0/ENABLED=1/' "$STUNNEL_DEFAULT"
+    # Habilitar o daemon (substitui ENABLED=0 por ENABLED=1, ou adiciona se não existir)
+    if grep -q '^ENABLED=' "$STUNNEL_DEFAULT"; then
+        sed -i 's/^ENABLED=.*/ENABLED=1/' "$STUNNEL_DEFAULT"
+    else
+        echo 'ENABLED=1' >> "$STUNNEL_DEFAULT"
+    fi
     # Garantir que FILES aponte para nossa configuração
     if grep -q '^FILES=' "$STUNNEL_DEFAULT"; then
         sed -i 's|^FILES=.*|FILES="/etc/stunnel/*.conf"|' "$STUNNEL_DEFAULT"
@@ -189,6 +188,13 @@ if [[ -f "$STUNNEL_DEFAULT" ]]; then
         echo 'FILES="/etc/stunnel/*.conf"' >> "$STUNNEL_DEFAULT"
     fi
 fi
+
+# O stunnel precisa que o diretório do pid file exista antes de iniciar.
+# /run é um tmpfs — o diretório some a cada reboot. Criar entrada no tmpfiles.d
+# para recriá-lo automaticamente na inicialização do sistema.
+mkdir -p /run/stunnel4
+chown root:root /run/stunnel4
+echo 'd /run/stunnel4 0755 root root -' > /etc/tmpfiles.d/stunnel4.conf
 
 systemctl daemon-reload
 systemctl enable stunnel4 --quiet
