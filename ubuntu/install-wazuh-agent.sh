@@ -1,40 +1,40 @@
 #!/usr/bin/env bash
 # install-wazuh-agent.sh
 #
-# Installs and configures the Wazuh Agent + stunnel client on Ubuntu.
+# Instala e configura o Wazuh Agent + cliente stunnel no Ubuntu.
 #
-# Flow:
-#   1. Install stunnel4 (apt)
-#   2. Write stunnel client config with SNI tunnels for port 443
-#   3. Enable and start stunnel4 service
-#   4. Add Wazuh apt repository and install the agent
-#   5. Patch /var/ossec/etc/ossec.conf (127.0.0.1:1514 TCP)
-#   6. Enroll agent with manager via agent-auth (-P password)
-#   7. Enable and start wazuh-agent service
+# Fluxo:
+#   1. Instalar stunnel4 (apt)
+#   2. Gravar configuração do cliente stunnel com túneis SNI na porta 443
+#   3. Habilitar e iniciar o serviço stunnel4
+#   4. Adicionar repositório apt do Wazuh e instalar o agente
+#   5. Corrigir /var/ossec/etc/ossec.conf (127.0.0.1:1514 TCP)
+#   6. Registrar o agente no manager via agent-auth (-P senha)
+#   7. Habilitar e iniciar o serviço wazuh-agent
 #
-# Requirements:
+# Requisitos:
 #   - Ubuntu 20.04 / 22.04 / 24.04 (x86_64)
-#   - Run as root (sudo bash install-wazuh-agent.sh ...)
-#   - Outbound TCP 443 open to agents-wazuh.carbigdata.com.br
-#                                 enroll-wazuh.carbigdata.com.br
+#   - Executar como root (sudo bash install-wazuh-agent.sh ...)
+#   - TCP 443 de saída liberado para agents-wazuh.carbigdata.com.br
+#                                        enroll-wazuh.carbigdata.com.br
 #
-# Usage:
-#   sudo bash install-wazuh-agent.sh -n <agent-name> -p <enrollment-password> [options]
+# Uso:
+#   sudo bash install-wazuh-agent.sh -n <nome-do-agente> -p <senha-de-registro> [opções]
 #
-# Options:
-#   -n <name>       Agent name as it appears in the Wazuh Dashboard  (REQUIRED)
-#   -p <password>   Enrollment password matching manager's authd.pass (REQUIRED)
-#   -w <version>    Wazuh version to install (default: 4.14.5)
-#   -s              Skip apt-get update (use cached package lists)
-#   -h              Show this help
+# Opções:
+#   -n <nome>    Nome do agente exibido no Wazuh Dashboard          (OBRIGATÓRIO)
+#   -p <senha>   Senha de registro — deve coincidir com authd.pass  (OBRIGATÓRIO)
+#   -w <versão>  Versão do Wazuh a instalar (padrão: 4.14.5)
+#   -s           Ignorar apt-get update (usar listas de pacotes em cache)
+#   -h           Exibir esta ajuda
 #
-# Examples:
-#   sudo bash install-wazuh-agent.sh -n ubuntu-prod-01 -p "YourEnrollSecret"
-#   sudo bash install-wazuh-agent.sh -n db-server-02   -p "YourEnrollSecret" -w 4.14.5
+# Exemplos:
+#   sudo bash install-wazuh-agent.sh -n ubuntu-prod-01 -p "SuaSenhaDeRegistro"
+#   sudo bash install-wazuh-agent.sh -n db-server-02   -p "SuaSenhaDeRegistro" -w 4.14.5
 
 set -euo pipefail
 
-# ── Colour helpers ─────────────────────────────────────────────────────────────
+# ── Helpers de cor ─────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'
 YELLOW='\033[1;33m'; BOLD='\033[1m'; RESET='\033[0m'
 
@@ -44,14 +44,14 @@ warn()  { echo -e "    ${YELLOW}[!!]${RESET} $*"; }
 fail()  { echo -e "    ${RED}[XX]${RESET} $*" >&2; exit 1; }
 log()   { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*" >> "$LOG_FILE"; }
 
-# ── Configuration — edit to match your environment ────────────────────────────
+# ── Configuração — ajuste conforme seu ambiente ───────────────────────────────
 AGENTS_SNI="agents-wazuh.carbigdata.com.br"
 ENROLL_SNI="enroll-wazuh.carbigdata.com.br"
 TUNNEL_PORT=443
 AGENT_PORT=1514
 ENROLL_PORT=1515
 
-# Paths
+# Caminhos
 STUNNEL_CONF="/etc/stunnel/wazuh-agent.conf"
 STUNNEL_DEFAULT="/etc/default/stunnel4"
 WAZUH_DIR="/var/ossec"
@@ -60,7 +60,7 @@ CLIENT_KEYS="$WAZUH_DIR/etc/client.keys"
 LOG_FILE="/tmp/wazuh-agent-install.log"
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Defaults ──────────────────────────────────────────────────────────────────
+# ── Valores padrão ────────────────────────────────────────────────────────────
 AGENT_NAME=""
 ENROLL_PASS=""
 WAZUH_VERSION="4.14.5"
@@ -78,86 +78,86 @@ while getopts "n:p:w:sh" opt; do
         w) WAZUH_VERSION="$OPTARG" ;;
         s) SKIP_UPDATE=true ;;
         h) usage ;;
-        *) fail "Unknown option. Run with -h for help." ;;
+        *) fail "Opção desconhecida. Execute com -h para ver a ajuda." ;;
     esac
 done
 
-# ── Pre-flight checks ─────────────────────────────────────────────────────────
-[[ $EUID -ne 0 ]] && fail "This script must be run as root. Use: sudo bash $0 $*"
+# ── Verificações iniciais ─────────────────────────────────────────────────────
+[[ $EUID -ne 0 ]] && fail "Este script deve ser executado como root. Use: sudo bash $0 $*"
 
-[[ -z "$AGENT_NAME"  ]] && fail "Agent name is required. Use: -n <agent-name>"
-[[ -z "$ENROLL_PASS" ]] && fail "Enrollment password is required. Use: -p <password>"
-[[ ${#ENROLL_PASS} -lt 8 ]] && fail "Enrollment password must be at least 8 characters."
+[[ -z "$AGENT_NAME"  ]] && fail "Nome do agente é obrigatório. Use: -n <nome-do-agente>"
+[[ -z "$ENROLL_PASS" ]] && fail "Senha de registro é obrigatória. Use: -p <senha>"
+[[ ${#ENROLL_PASS} -lt 8 ]] && fail "A senha de registro deve ter pelo menos 8 caracteres."
 
-# Detect architecture
+# Detectar arquitetura
 ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
 [[ "$ARCH" == "x86_64" ]] && ARCH="amd64"
-[[ "$ARCH" =~ ^(amd64|arm64|armhf)$ ]] || fail "Unsupported architecture: $ARCH"
+[[ "$ARCH" =~ ^(amd64|arm64|armhf)$ ]] || fail "Arquitetura não suportada: $ARCH"
 
-# Detect Ubuntu version
+# Detectar versão do Ubuntu
 if [[ -f /etc/os-release ]]; then
     . /etc/os-release
     DISTRO_NAME="$NAME"
     DISTRO_VERSION="$VERSION_ID"
 else
-    fail "Cannot determine OS. /etc/os-release not found."
+    fail "Não foi possível identificar o sistema operacional. /etc/os-release não encontrado."
 fi
 
 echo -e "\n${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗"
-echo -e   "║   Wazuh Agent + stunnel — Ubuntu Installer                   ║"
+echo -e   "║   Wazuh Agent + stunnel — Instalador Ubuntu                  ║"
 echo -e   "╚══════════════════════════════════════════════════════════════╝${RESET}\n"
-echo -e "  Agent name   : ${BOLD}$AGENT_NAME${RESET}"
-echo -e "  Wazuh version: $WAZUH_VERSION"
-echo -e "  Agents SNI   : $AGENTS_SNI"
-echo -e "  Enroll SNI   : $ENROLL_SNI"
-echo -e "  OS           : $DISTRO_NAME $DISTRO_VERSION ($ARCH)"
-echo -e "  Log file     : $LOG_FILE"
+echo -e "  Nome do agente : ${BOLD}$AGENT_NAME${RESET}"
+echo -e "  Versão Wazuh   : $WAZUH_VERSION"
+echo -e "  SNI agentes    : $AGENTS_SNI"
+echo -e "  SNI registro   : $ENROLL_SNI"
+echo -e "  Sistema        : $DISTRO_NAME $DISTRO_VERSION ($ARCH)"
+echo -e "  Arquivo de log : $LOG_FILE"
 echo ""
 
-log "=== Install started. AgentName=$AGENT_NAME WazuhVersion=$WAZUH_VERSION OS=$DISTRO_NAME $DISTRO_VERSION ==="
+log "=== Instalação iniciada. AgentName=$AGENT_NAME WazuhVersion=$WAZUH_VERSION OS=$DISTRO_NAME $DISTRO_VERSION ==="
 
 # =============================================================================
-# STEP 1 — Install stunnel4
+# PASSO 1 — Instalar stunnel4
 # =============================================================================
-step "Step 1/7 — Installing stunnel4"
+step "Passo 1/7 — Instalando stunnel4"
 
 if command -v stunnel4 &>/dev/null || command -v stunnel &>/dev/null; then
-    warn "stunnel already installed — skipping"
-    log "stunnel already installed"
+    warn "stunnel já está instalado — ignorando esta etapa"
+    log "stunnel já instalado"
 else
     if [[ "$SKIP_UPDATE" == false ]]; then
-        echo "    Updating package lists..."
+        echo "    Atualizando lista de pacotes..."
         apt-get update -qq
     fi
     apt-get install -y stunnel4 curl gnupg2 >/dev/null
-    ok "stunnel4 installed"
-    log "stunnel4 installed"
+    ok "stunnel4 instalado"
+    log "stunnel4 instalado"
 fi
 
 # =============================================================================
-# STEP 2 — Write stunnel client config
+# PASSO 2 — Gravar configuração do cliente stunnel
 # =============================================================================
-step "Step 2/7 — Writing stunnel client config"
+step "Passo 2/7 — Gravando configuração do stunnel"
 
 mkdir -p /etc/stunnel
 
 cat > "$STUNNEL_CONF" << EOF
-; stunnel client config — Wazuh agent tunnel
-; Wraps Wazuh binary protocol in TLS with SNI so it can be routed
-; through the external-ingress on port $TUNNEL_PORT.
+; Configuração do cliente stunnel — túnel do agente Wazuh
+; Encapsula o protocolo binário do Wazuh em TLS com SNI para roteamento
+; pelo external-ingress na porta $TUNNEL_PORT.
 ;
-; DO NOT EDIT — managed by install-wazuh-agent.sh
+; NÃO EDITAR — gerenciado pelo install-wazuh-agent.sh
 
 client    = yes
 foreground = no
 pid       = /run/stunnel4/wazuh-agent.pid
 
-; verify = 2  → validate server cert against system CA bundle (/etc/ssl/certs).
-;               The server presents a Let's Encrypt cert — Ubuntu trusts it
-;               by default via ca-certificates.
-; checkHost  → enforce that cert CN/SAN matches the connected hostname.
+; verify = 2  → valida o certificado do servidor contra o bundle de CAs do sistema
+;               (/etc/ssl/certs). O servidor apresenta um certificado Let's Encrypt,
+;               que o Ubuntu já confia por padrão via ca-certificates.
+; checkHost  → garante que o CN/SAN do certificado corresponda ao hostname conectado.
 
-; Agent keepalive (ossec-agentd → wazuh-master:$AGENT_PORT)
+; Comunicação contínua do agente (ossec-agentd → wazuh-master:$AGENT_PORT)
 [wazuh-agents]
 accept    = 127.0.0.1:$AGENT_PORT
 connect   = ${AGENTS_SNI}:${TUNNEL_PORT}
@@ -166,7 +166,7 @@ verify    = 2
 checkHost = $AGENTS_SNI
 CApath    = /etc/ssl/certs
 
-; Agent enrollment (agent-auth → wazuh-master:$ENROLL_PORT)
+; Registro do agente (agent-auth → wazuh-master:$ENROLL_PORT)
 [wazuh-enrollment]
 accept    = 127.0.0.1:$ENROLL_PORT
 connect   = ${ENROLL_SNI}:${TUNNEL_PORT}
@@ -176,18 +176,18 @@ checkHost = $ENROLL_SNI
 CApath    = /etc/ssl/certs
 EOF
 
-ok "Config written to $STUNNEL_CONF"
-log "stunnel.conf written"
+ok "Configuração gravada em $STUNNEL_CONF"
+log "stunnel.conf gravado"
 
 # =============================================================================
-# STEP 3 — Enable and start stunnel4 service
+# PASSO 3 — Habilitar e iniciar o serviço stunnel4
 # =============================================================================
-step "Step 3/7 — Enabling stunnel4 service"
+step "Passo 3/7 — Habilitando o serviço stunnel4"
 
-# The Debian/Ubuntu stunnel4 package uses /etc/default/stunnel4 to enable the daemon
+# O pacote stunnel4 no Debian/Ubuntu usa /etc/default/stunnel4 para habilitar o daemon
 if [[ -f "$STUNNEL_DEFAULT" ]]; then
     sed -i 's/^ENABLED=0/ENABLED=1/' "$STUNNEL_DEFAULT"
-    # Ensure FILES points to our config
+    # Garantir que FILES aponte para nossa configuração
     if grep -q '^FILES=' "$STUNNEL_DEFAULT"; then
         sed -i 's|^FILES=.*|FILES="/etc/stunnel/*.conf"|' "$STUNNEL_DEFAULT"
     else
@@ -199,43 +199,43 @@ systemctl daemon-reload
 systemctl enable stunnel4 --quiet
 systemctl restart stunnel4
 
-# Give it a moment to bind
+# Aguardar o processo fazer o bind nas portas
 sleep 2
 
 if ! systemctl is-active --quiet stunnel4; then
     journalctl -u stunnel4 --no-pager -n 20 >&2
-    fail "stunnel4 failed to start — see journal above"
+    fail "stunnel4 falhou ao iniciar — veja o log acima"
 fi
-ok "stunnel4 running"
-log "stunnel4 started"
+ok "stunnel4 em execução"
+log "stunnel4 iniciado"
 
-# Verify ports
+# Verificar se as portas estão escutando
 for PORT in $AGENT_PORT $ENROLL_PORT; do
-    echo -n "    Waiting for stunnel to listen on $PORT..."
+    echo -n "    Aguardando stunnel escutar na porta $PORT..."
     DEADLINE=$(( $(date +%s) + 30 ))
     until ss -tlnp 2>/dev/null | grep -q ":$PORT "; do
-        [[ $(date +%s) -gt $DEADLINE ]] && fail "stunnel not listening on $PORT after 30s"
+        [[ $(date +%s) -gt $DEADLINE ]] && fail "stunnel não está escutando na porta $PORT após 30s"
         sleep 1
     done
     echo -e " ${GREEN}OK${RESET}"
 done
-log "stunnel ports $AGENT_PORT and $ENROLL_PORT verified"
+log "Portas stunnel $AGENT_PORT e $ENROLL_PORT verificadas"
 
 # =============================================================================
-# STEP 4 — Add Wazuh apt repo and install the agent
+# PASSO 4 — Adicionar repositório apt do Wazuh e instalar o agente
 # =============================================================================
-step "Step 4/7 — Installing Wazuh Agent"
+step "Passo 4/7 — Instalando o Wazuh Agent"
 
 if systemctl is-active --quiet wazuh-agent 2>/dev/null || \
    [[ -f "$WAZUH_DIR/bin/wazuh-agentd" ]]; then
-    warn "Wazuh Agent already installed — skipping package install"
-    log "Wazuh already installed"
+    warn "Wazuh Agent já está instalado — ignorando instalação do pacote"
+    log "Wazuh já instalado"
 else
     WAZUH_GPG="/usr/share/keyrings/wazuh.gpg"
     WAZUH_LIST="/etc/apt/sources.list.d/wazuh.list"
 
     if [[ ! -f "$WAZUH_GPG" ]]; then
-        echo "    Importing Wazuh GPG key..."
+        echo "    Importando chave GPG do Wazuh..."
         curl -sS https://packages.wazuh.com/key/GPG-KEY-WAZUH \
             | gpg --no-default-keyring \
                   --keyring gnupg-ring:"$WAZUH_GPG" \
@@ -252,25 +252,25 @@ else
         apt-get update -qq
     fi
 
-    echo "    Installing wazuh-agent=$WAZUH_VERSION-1 (this may take a minute)..."
-    WAZUH_MANAGER="127.0.0.1"           \
-    WAZUH_MANAGER_PORT="$AGENT_PORT"    \
-    WAZUH_PROTOCOL="TCP"                \
-    WAZUH_AGENT_NAME="$AGENT_NAME"      \
-    WAZUH_REGISTRATION_SERVER="127.0.0.1" \
+    echo "    Instalando wazuh-agent=$WAZUH_VERSION-1 (pode levar alguns minutos)..."
+    WAZUH_MANAGER="127.0.0.1"              \
+    WAZUH_MANAGER_PORT="$AGENT_PORT"       \
+    WAZUH_PROTOCOL="TCP"                   \
+    WAZUH_AGENT_NAME="$AGENT_NAME"         \
+    WAZUH_REGISTRATION_SERVER="127.0.0.1"  \
     WAZUH_REGISTRATION_PORT="$ENROLL_PORT" \
     apt-get install -y "wazuh-agent=$WAZUH_VERSION-1" >/dev/null
 
-    ok "Wazuh Agent installed"
-    log "wazuh-agent $WAZUH_VERSION installed"
+    ok "Wazuh Agent instalado"
+    log "wazuh-agent $WAZUH_VERSION instalado"
 fi
 
 # =============================================================================
-# STEP 5 — Verify / patch ossec.conf
+# PASSO 5 — Verificar / corrigir ossec.conf
 # =============================================================================
-step "Step 5/7 — Verifying ossec.conf"
+step "Passo 5/7 — Verificando ossec.conf"
 
-[[ -f "$OSSEC_CONF" ]] || fail "ossec.conf not found at $OSSEC_CONF"
+[[ -f "$OSSEC_CONF" ]] || fail "ossec.conf não encontrado em $OSSEC_CONF"
 
 PATCHED=false
 
@@ -280,7 +280,7 @@ patch_xml_value() {
     current=$(grep -oP "(?<=<${field}>)[^<]+" "$OSSEC_CONF" || true)
     if [[ "$current" != "$expected" ]]; then
         sed -i "s|<${field}>${current}</${field}>|<${field}>${expected}</${field}>|" "$OSSEC_CONF"
-        warn "Patched: <$field> $current → $expected"
+        warn "Corrigido: <$field> $current → $expected"
         PATCHED=true
     fi
 }
@@ -290,45 +290,45 @@ patch_xml_value "port"     "$AGENT_PORT"
 patch_xml_value "protocol" "tcp"
 
 if [[ "$PATCHED" == false ]]; then
-    ok "ossec.conf already correct — no changes needed"
+    ok "ossec.conf já está correto — nenhuma alteração necessária"
 else
-    ok "ossec.conf patched"
+    ok "ossec.conf corrigido e salvo"
 fi
-log "ossec.conf verified PATCHED=$PATCHED"
+log "ossec.conf verificado PATCHED=$PATCHED"
 
 # =============================================================================
-# STEP 6 — Enroll agent
+# PASSO 6 — Registrar o agente
 # =============================================================================
-step "Step 6/7 — Enrolling agent"
+step "Passo 6/7 — Registrando o agente"
 
 if [[ -s "$CLIENT_KEYS" ]]; then
-    warn "client.keys already exists — skipping enrollment (agent already registered)"
-    log "Enrollment skipped — already enrolled"
+    warn "client.keys já existe — ignorando registro (agente já cadastrado)"
+    log "Registro ignorado — agente já registrado"
 else
-    echo "    Running agent-auth..."
+    echo "    Executando agent-auth..."
     AUTH_OUT=$("$WAZUH_DIR/bin/agent-auth" \
         -m 127.0.0.1 \
         -p "$ENROLL_PORT" \
         -A "$AGENT_NAME" \
         -P "$ENROLL_PASS" 2>&1) || true
 
-    log "agent-auth output: $AUTH_OUT"
+    log "Saída do agent-auth: $AUTH_OUT"
 
     if echo "$AUTH_OUT" | grep -q "Valid key received"; then
-        ok "Agent enrolled successfully"
-        log "Enrollment successful"
+        ok "Agente registrado com sucesso"
+        log "Registro concluído com sucesso"
     else
         echo ""
-        echo -e "  ${YELLOW}agent-auth output:${RESET}"
+        echo -e "  ${YELLOW}Saída do agent-auth:${RESET}"
         echo "$AUTH_OUT" | sed 's/^/    /'
-        fail "Enrollment failed — check stunnel connectivity to ${ENROLL_SNI}:${TUNNEL_PORT}"
+        fail "Registro falhou — verifique a conectividade do stunnel com ${ENROLL_SNI}:${TUNNEL_PORT}"
     fi
 fi
 
 # =============================================================================
-# STEP 7 — Enable and start wazuh-agent
+# PASSO 7 — Habilitar e iniciar wazuh-agent
 # =============================================================================
-step "Step 7/7 — Starting wazuh-agent service"
+step "Passo 7/7 — Iniciando o serviço wazuh-agent"
 
 systemctl daemon-reload
 systemctl enable wazuh-agent --quiet
@@ -336,40 +336,40 @@ systemctl restart wazuh-agent
 
 sleep 3
 
-WAZUH_STATUS=$(systemctl is-active wazuh-agent 2>/dev/null || echo "unknown")
+WAZUH_STATUS=$(systemctl is-active wazuh-agent 2>/dev/null || echo "desconhecido")
 if [[ "$WAZUH_STATUS" == "active" ]]; then
-    ok "wazuh-agent running"
-    log "wazuh-agent started"
+    ok "wazuh-agent em execução"
+    log "wazuh-agent iniciado"
 else
-    warn "wazuh-agent status: $WAZUH_STATUS — check $WAZUH_DIR/logs/ossec.log"
+    warn "Status do wazuh-agent: $WAZUH_STATUS — verifique $WAZUH_DIR/logs/ossec.log"
     log "wazuh-agent status=$WAZUH_STATUS"
 fi
 
 # =============================================================================
-# Summary
+# Resumo
 # =============================================================================
 AGENT_ID=$(awk '{print $1}' "$CLIENT_KEYS" 2>/dev/null || echo "—")
 
 echo ""
 echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════════╗"
-echo -e   "║   Installation complete                                       ║"
+echo -e   "║   Instalação concluída                                        ║"
 echo -e   "╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo ""
-echo -e "  Agent name : ${BOLD}$AGENT_NAME${RESET}"
-echo -e "  Agent ID   : $AGENT_ID"
+echo -e "  Nome do agente : ${BOLD}$AGENT_NAME${RESET}"
+echo -e "  ID do agente   : $AGENT_ID"
 echo ""
-echo "  Services:"
+echo "  Serviços:"
 printf "    %-12s: %s\n" "stunnel4"     "$(systemctl is-active stunnel4 2>/dev/null)"
 printf "    %-12s: %s\n" "wazuh-agent"  "$(systemctl is-active wazuh-agent 2>/dev/null)"
 echo ""
-echo "  Log files:"
-echo "    Install  : $LOG_FILE"
-echo "    Wazuh    : $WAZUH_DIR/logs/ossec.log"
-echo "    stunnel  : journalctl -u stunnel4 -f"
+echo "  Arquivos de log:"
+echo "    Instalação : $LOG_FILE"
+echo "    Wazuh      : $WAZUH_DIR/logs/ossec.log"
+echo "    stunnel    : journalctl -u stunnel4 -f"
 echo ""
-echo -e "  ${CYAN}Verify on the manager:${RESET}"
+echo -e "  ${CYAN}Verificar no manager:${RESET}"
 echo "    docker exec -it \$(docker ps -q -f name=wazuh-master) \\"
 echo "      /var/ossec/bin/agent_control -l"
 echo ""
 
-log "=== Install finished ==="
+log "=== Instalação finalizada ==="
