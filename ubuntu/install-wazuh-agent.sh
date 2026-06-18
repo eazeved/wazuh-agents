@@ -19,18 +19,17 @@
 #                                        enroll-wazuh.carbigdata.com.br
 #
 # Uso:
-#   sudo bash install-wazuh-agent.sh -n <nome-do-agente> -p <senha-de-registro> [opções]
+#   sudo bash install-wazuh-agent.sh -n <nome-do-agente> [opções]
 #
 # Opções:
-#   -n <nome>    Nome do agente exibido no Wazuh Dashboard          (OBRIGATÓRIO)
-#   -p <senha>   Senha de registro — deve coincidir com authd.pass  (OBRIGATÓRIO)
+#   -n <nome>    Nome do agente exibido no Wazuh Dashboard  (OBRIGATÓRIO)
 #   -w <versão>  Versão do Wazuh a instalar (padrão: 4.14.5)
 #   -s           Ignorar apt-get update (usar listas de pacotes em cache)
 #   -h           Exibir esta ajuda
 #
 # Exemplos:
-#   sudo bash install-wazuh-agent.sh -n ubuntu-prod-01 -p "SuaSenhaDeRegistro"
-#   sudo bash install-wazuh-agent.sh -n db-server-02   -p "SuaSenhaDeRegistro" -w 4.14.5
+#   sudo bash install-wazuh-agent.sh -n ubuntu-prod-01
+#   sudo bash install-wazuh-agent.sh -n db-server-02 -w 4.14.5
 
 set -euo pipefail
 
@@ -62,7 +61,6 @@ LOG_FILE="/tmp/wazuh-agent-install.log"
 
 # ── Valores padrão ────────────────────────────────────────────────────────────
 AGENT_NAME=""
-ENROLL_PASS=""
 WAZUH_VERSION="4.14.5"
 SKIP_UPDATE=false
 
@@ -71,10 +69,9 @@ usage() {
     exit 0
 }
 
-while getopts "n:p:w:sh" opt; do
+while getopts "n:w:sh" opt; do
     case "$opt" in
         n) AGENT_NAME="$OPTARG" ;;
-        p) ENROLL_PASS="$OPTARG" ;;
         w) WAZUH_VERSION="$OPTARG" ;;
         s) SKIP_UPDATE=true ;;
         h) usage ;;
@@ -85,9 +82,7 @@ done
 # ── Verificações iniciais ─────────────────────────────────────────────────────
 [[ $EUID -ne 0 ]] && fail "Este script deve ser executado como root. Use: sudo bash $0 $*"
 
-[[ -z "$AGENT_NAME"  ]] && fail "Nome do agente é obrigatório. Use: -n <nome-do-agente>"
-[[ -z "$ENROLL_PASS" ]] && fail "Senha de registro é obrigatória. Use: -p <senha>"
-[[ ${#ENROLL_PASS} -lt 8 ]] && fail "A senha de registro deve ter pelo menos 8 caracteres."
+[[ -z "$AGENT_NAME" ]] && fail "Nome do agente é obrigatório. Use: -n <nome-do-agente>"
 
 # Detectar arquitetura
 ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m)
@@ -309,8 +304,7 @@ else
     AUTH_OUT=$("$WAZUH_DIR/bin/agent-auth" \
         -m 127.0.0.1 \
         -p "$ENROLL_PORT" \
-        -A "$AGENT_NAME" \
-        -P "$ENROLL_PASS" 2>&1) || true
+        -A "$AGENT_NAME" 2>&1) || true
 
     log "Saída do agent-auth: $AUTH_OUT"
 
